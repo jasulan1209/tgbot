@@ -1,0 +1,74 @@
+services:
+
+  mysql:
+    image: mysql:8.4
+    container_name: incognito_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: incognito_bot
+      MYSQL_USER: incognito
+      MYSQL_PASSWORD: strongpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "incognito", "-pstrongpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: incognito_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  bot:
+    build: .
+    container_name: incognito_bot
+    restart: unless-stopped
+    command: python -m app.bot.main
+    env_file: .env
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_HOST: redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+
+  admin_api:
+    build: .
+    container_name: incognito_admin
+    restart: unless-stopped
+    command: uvicorn app.admin_api.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: .env
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_HOST: redis
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+
+volumes:
+  mysql_data:
+  redis_data:
